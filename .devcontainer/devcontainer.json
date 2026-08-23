@@ -3,10 +3,8 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "api",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind",
   "runServices": ["postgres", "api"],
   "forwardPorts": [8000, 5432],
   "features": {"ghcr.io/devcontainers/features/docker-in-docker:2": {}},
   "customizations": {"vscode": {"extensions": ["ms-python.python", "ms-python.vscode-pylance"]}}
 }
-
