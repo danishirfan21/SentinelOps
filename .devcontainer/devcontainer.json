@@ -1,10 +1,13 @@
 {
   "name": "SentinelOps",
-  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+  "dockerComposeFile": "docker-compose.devcontainer.yml",
+  "service": "workspace",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "overrideCommand": false,
+  "runServices": ["workspace"],
   "forwardPorts": [8000, 5432],
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {"moby": true},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {"moby": false},
     "ghcr.io/devcontainers/features/sshd:1": {"version": "latest"}
   },
   "customizations": {"vscode": {"extensions": ["ms-python.python", "ms-python.vscode-pylance"]}}
