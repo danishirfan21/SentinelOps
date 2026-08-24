@@ -7,8 +7,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import HealthState, MonitoredService, ServiceCheck, ServiceHealthState
-from app.schemas import CheckCreate, CheckIngestResponse, CheckOut, HealthHistoryOut, HealthOut, ServiceCreate, ServiceOut
+from app.models import Alert, AlertRule, AlertSeverity, AlertState, HealthState, Incident, IncidentEvent, IncidentStatus, MonitoredService, ServiceCheck, ServiceHealthState
+from app.schemas import AlertOut, AlertRuleCreate, AlertRuleOut, AlertRulePatch, CheckCreate, CheckIngestResponse, CheckOut, HealthHistoryOut, HealthOut, IncidentEventOut, IncidentOut, ServiceCreate, ServiceOut
 from app.services.monitoring import ingest_check
 
 router = APIRouter(prefix="/api/v1")
@@ -78,4 +78,90 @@ async def current_health(service_id: uuid.UUID, session: AsyncSession = Depends(
 async def health_history(service_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     await _service_or_404(session, str(service_id))
     return (await session.scalars(select(ServiceHealthState).where(ServiceHealthState.service_id == service_id).order_by(ServiceHealthState.started_at, ServiceHealthState.created_at))).all()
+
+
+@router.post("/services/{service_id}/alert-rules", response_model=AlertRuleOut, status_code=status.HTTP_201_CREATED)
+async def create_alert_rule(service_id: uuid.UUID, payload: AlertRuleCreate, session: AsyncSession = Depends(get_session)):
+    await _service_or_404(session, str(service_id))
+    rule = AlertRule(service_id=service_id, **payload.model_dump())
+    try:
+        session.add(rule)
+        await session.commit()
+        await session.refresh(rule)
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="alert rule slug already exists for service")
+    return rule
+
+
+@router.get("/services/{service_id}/alert-rules", response_model=list[AlertRuleOut])
+async def list_alert_rules(service_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+    await _service_or_404(session, str(service_id))
+    return (await session.scalars(select(AlertRule).where(AlertRule.service_id == service_id).order_by(AlertRule.name))).all()
+
+
+@router.get("/alert-rules/{rule_id}", response_model=AlertRuleOut)
+async def get_alert_rule(rule_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+    rule = await session.get(AlertRule, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="alert rule not found")
+    return rule
+
+
+@router.patch("/alert-rules/{rule_id}", response_model=AlertRuleOut)
+async def patch_alert_rule(rule_id: uuid.UUID, payload: AlertRulePatch, session: AsyncSession = Depends(get_session)):
+    rule = await session.get(AlertRule, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="alert rule not found")
+    for field, value in payload.model_dump(exclude_none=True).items():
+        setattr(rule, field, value)
+    await session.commit()
+    await session.refresh(rule)
+    return rule
+
+
+@router.get("/alerts", response_model=list[AlertOut])
+async def list_alerts(service_id: uuid.UUID | None = None, state: AlertState | None = None, severity: AlertSeverity | None = None, session: AsyncSession = Depends(get_session)):
+    query = select(Alert)
+    if service_id is not None:
+        query = query.where(Alert.service_id == service_id)
+    if state is not None:
+        query = query.where(Alert.state == state)
+    if severity is not None:
+        query = query.where(Alert.severity == severity)
+    return (await session.scalars(query.order_by(Alert.opened_at, Alert.created_at))).all()
+
+
+@router.get("/alerts/{alert_id}", response_model=AlertOut)
+async def get_alert(alert_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+    alert = await session.get(Alert, alert_id)
+    if alert is None:
+        raise HTTPException(status_code=404, detail="alert not found")
+    return alert
+
+
+@router.get("/incidents", response_model=list[IncidentOut])
+async def list_incidents(service_id: uuid.UUID | None = None, status_filter: IncidentStatus | None = Query(default=None, alias="status"), severity: AlertSeverity | None = None, session: AsyncSession = Depends(get_session)):
+    query = select(Incident)
+    if service_id is not None:
+        query = query.where(Incident.service_id == service_id)
+    if status_filter is not None:
+        query = query.where(Incident.status == status_filter)
+    if severity is not None:
+        query = query.where(Incident.severity == severity)
+    return (await session.scalars(query.order_by(Incident.opened_at, Incident.created_at))).all()
+
+
+@router.get("/incidents/{incident_id}", response_model=IncidentOut)
+async def get_incident(incident_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+    incident = await session.get(Incident, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="incident not found")
+    return incident
+
+
+@router.get("/incidents/{incident_id}/events", response_model=list[IncidentEventOut])
+async def incident_events(incident_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+    if await session.get(Incident, incident_id) is None:
+        raise HTTPException(status_code=404, detail="incident not found")
+    return (await session.scalars(select(IncidentEvent).where(IncidentEvent.incident_id == incident_id).order_by(IncidentEvent.occurred_at, IncidentEvent.created_at))).all()
 

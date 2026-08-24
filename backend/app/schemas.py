@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
-from app.models import HealthState
+from app.models import AlertConditionType, AlertSeverity, AlertState, HealthState, IncidentEventType, IncidentStatus
 
 
 class ServiceCreate(BaseModel):
@@ -68,4 +68,65 @@ class HealthHistoryOut(HealthOut):
     id: uuid.UUID
     ended_at: datetime | None
     triggering_check_id: uuid.UUID | None
+
+
+class AlertRuleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    slug: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=120)
+    condition_type: AlertConditionType
+    severity: AlertSeverity
+    is_enabled: bool = True
+
+
+class AlertRulePatch(BaseModel):
+    severity: AlertSeverity | None = None
+    is_enabled: bool | None = None
+
+
+class AlertRuleOut(AlertRuleCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    service_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class AlertOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    rule_id: uuid.UUID
+    service_id: uuid.UUID
+    state: AlertState
+    severity: AlertSeverity
+    opened_at: datetime
+    resolved_at: datetime | None
+    triggering_health_state_id: uuid.UUID
+    resolution_health_state_id: uuid.UUID | None
+    created_at: datetime
+
+
+class IncidentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    service_id: uuid.UUID
+    title: str
+    severity: AlertSeverity
+    status: IncidentStatus
+    opened_at: datetime
+    resolved_at: datetime | None
+    opened_by_alert_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class IncidentEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    incident_id: uuid.UUID
+    event_type: IncidentEventType
+    occurred_at: datetime
+    health_state_id: uuid.UUID | None
+    alert_id: uuid.UUID | None
+    message: str
+    created_at: datetime
 

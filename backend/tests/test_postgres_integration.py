@@ -13,7 +13,7 @@ from app.main import app
 async def clean_database():
     try:
         async with engine.begin() as connection:
-            await connection.execute(text("TRUNCATE service_health_states, service_checks, monitored_services CASCADE"))
+            await connection.execute(text("TRUNCATE incident_events, incidents, alerts, alert_rules, service_health_states, service_checks, monitored_services CASCADE"))
         yield
     finally:
         # Tests use function-scoped event loops. Dispose pooled asyncpg
@@ -81,3 +81,28 @@ async def test_checks_are_returned_in_checked_at_order_and_invalid_input_is_not_
     invalid = await client.post(f"/api/v1/services/{service_id}/checks", json={"external_id": "bad", "checked_at": "2026-08-24T11:00:00Z", "success": True, "latency_ms": -1})
     assert invalid.status_code == 422
     assert len((await client.get(f"/api/v1/services/{service_id}/checks")).json()) == 2
+
+
+async def test_alert_and_incident_recovery_lifecycle(client):
+    service_id = await create_payments(client)
+    for body in [
+        {"name": "degraded", "slug": "degraded", "condition_type": "STATE_DEGRADED", "severity": "WARNING"},
+        {"name": "down", "slug": "down", "condition_type": "STATE_DOWN", "severity": "CRITICAL"},
+    ]:
+        assert (await client.post(f"/api/v1/services/{service_id}/alert-rules", json=body)).status_code == 201
+    number = 0
+    for success, latency, count in [(True, 700, 3), (False, 1200, 3), (True, 100, 1)]:
+        for _ in range(count):
+            number += 1
+            await send_check(client, service_id, number, success, latency)
+    alerts = (await client.get("/api/v1/alerts", params={"service_id": str(service_id)})).json()
+    assert [(alert["severity"], alert["state"]) for alert in alerts] == [("WARNING", "RESOLVED"), ("CRITICAL", "RESOLVED")]
+    incident = (await client.get("/api/v1/incidents", params={"service_id": str(service_id)})).json()[0]
+    assert incident["status"] == "OPEN"
+    for _ in range(3):
+        number += 1
+        await send_check(client, service_id, number, True, 100)
+    incident = (await client.get(f"/api/v1/incidents/{incident['id']}")).json()
+    assert incident["status"] == "RESOLVED"
+    events = (await client.get(f"/api/v1/incidents/{incident['id']}/events")).json()
+    assert [event["event_type"] for event in events] == ["OPENED", "RECOVERY_STARTED", "RESOLVED"]

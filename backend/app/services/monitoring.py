@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import HealthState, MonitoredService, ServiceCheck, ServiceHealthState
 from app.schemas import CheckCreate
 from app.services.health_engine import CheckEvidence, evaluate_state
+from app.services.alert_engine import evaluate_alert_rules
 
 
 async def ingest_check(session: AsyncSession, service_id: uuid.UUID, payload: CheckCreate) -> tuple[ServiceCheck, HealthState, bool]:
@@ -37,12 +38,15 @@ async def ingest_check(session: AsyncSession, service_id: uuid.UUID, payload: Ch
         next_state, reason = evaluate_state(HealthState(active.state), evidence)
         if next_state != HealthState(active.state):
             active.ended_at = check.checked_at
-            session.add(ServiceHealthState(
+            transition = ServiceHealthState(
                 service_id=service_id,
                 state=next_state,
                 started_at=check.checked_at,
                 trigger_reason=reason,
                 triggering_check_id=check.id,
-            ))
+            )
+            session.add(transition)
+            await session.flush()
+            await evaluate_alert_rules(session, service_id, transition)
         return check, next_state, False
 
