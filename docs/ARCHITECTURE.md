@@ -23,6 +23,14 @@ health observation
 
 `monitored_services` owns service metadata. `service_checks` stores observations ordered by `checked_at`; its `(service_id, external_id)` unique constraint is the idempotency boundary. `service_health_states` stores intervals, preserving state history and the check/reason that triggered a transition.
 
+## Phase 2 alert and incident flow
+
+```text
+health transition -> rule evaluation -> alert lifecycle -> incident lifecycle -> incident events
+```
+
+Rules match exact persisted states (`STATE_DEGRADED` or `STATE_DOWN`), so alerts are rule-specific. Open alerts are unique per rule/service. A CRITICAL alert opens at most one service incident. Alert clearance at `RECOVERING` does not resolve its incident; `RECOVERY_STARTED` is persisted, and the incident resolves only after `HEALTHY`. Evaluation, alert updates, and incident events occur in the check-ingestion transaction.
+
 ## Deliberately excluded
 
 Phase 1 does not implement a scheduler or active probe executor, alerts, incidents, authentication, dashboard/frontend, or deployment automation.

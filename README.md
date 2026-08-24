@@ -4,6 +4,8 @@ SentinelOps is a service-health monitoring portfolio project that records health
 
 Phase 1 proves the monitoring core only: service registration, idempotent health-check ingestion, anti-flapping state evaluation, persisted state intervals, and recovery. Alerts, incidents, authentication, dashboards, and a frontend are deliberately out of scope.
 
+Phase 2 adds rule-driven WARNING/CRITICAL alerts and automatic CRITICAL-outage incidents. Alerts resolve when their exact state condition clears; incidents remain open during recovery and resolve only after HEALTHY. Duplicate open alerts and incidents are prevented by PostgreSQL partial unique indexes. Notifications and frontend work remain out of scope.
+
 ## Stack
 
 Python 3.11, FastAPI, SQLAlchemy 2 async, PostgreSQL/asyncpg, Alembic, Pydantic, Docker Compose, and pytest with HTTPX ASGI tests.
@@ -61,6 +63,8 @@ bash scripts/verify_codespaces.sh
 ```
 
 The script brings up PostgreSQL and the API, confirms Alembic is at head, seeds services, executes the real Payments API scenario, tests duplicate handling, runs PostgreSQL-backed tests, and removes containers only after success. On failure it leaves containers running for diagnosis.
+
+Phase 2 is verified separately with `bash scripts/verify_phase2.sh`. See [Phase 2 audit](docs/PHASE2_AUDIT.md) and [Phase 2 verification](docs/PHASE2_VERIFICATION.md).
 
 The included devcontainer runs the Compose API service, forwards ports 8000 and 5432, and enables Docker-in-Docker for Codespaces.
 
