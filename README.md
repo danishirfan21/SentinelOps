@@ -1,75 +1,105 @@
 # SentinelOps
 
-SentinelOps is a service-health monitoring portfolio project that records health observations, evaluates operational state over time, and persists deterministic service-state transitions in PostgreSQL.
+SentinelOps is a service-health monitoring and incident-management platform built with FastAPI, PostgreSQL, and React. It ingests health observations, evaluates service state using deterministic anti-flapping rules, generates rule-driven alerts, tracks outage incidents through recovery, and exposes operational state through a web dashboard.
 
-Phase 1 proves the monitoring core only: service registration, idempotent health-check ingestion, anti-flapping state evaluation, persisted state intervals, and recovery. Alerts, incidents, authentication, dashboards, and a frontend are deliberately out of scope.
+```text
+Health Observation → Health State → Alert → Incident → Recovery → Operations Dashboard
+```
 
-Phase 2 adds rule-driven WARNING/CRITICAL alerts and automatic CRITICAL-outage incidents. Alerts resolve when their exact state condition clears; incidents remain open during recovery and resolve only after HEALTHY. Duplicate open alerts and incidents are prevented by PostgreSQL partial unique indexes.
+## What it demonstrates
 
-Phase 3 adds a read-oriented React dashboard for services, health history, alerts, and incidents. It consumes the existing API through one configurable base URL and does not change the backend's alert or incident semantics.
-
-## Stack
-
-Python 3.11, FastAPI, SQLAlchemy 2 async, PostgreSQL/asyncpg, Alembic, Pydantic, Docker Compose, pytest with HTTPX ASGI tests, and a Vite/React/TypeScript frontend.
+- A deterministic service-health state machine with anti-flapping rules based on recent observations.
+- PostgreSQL-backed health-state intervals and idempotent health-check ingestion.
+- Rule-driven WARNING and CRITICAL alerts, with automatic incident creation for critical outages.
+- An explicit `RECOVERING` state and failed-recovery handling that preserves the existing incident rather than opening a duplicate.
+- Ordered incident event timelines and transactional health, alert, and incident processing.
+- A React/TypeScript operations dashboard for services, alerts, incidents, and recovery history.
+- Docker Compose and Codespaces reproducibility for the complete stack.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Service[Monitored Service] --> Check[Health Check]
-    Check --> API[FastAPI]
-    API --> Engine[Health State Engine]
-    Engine --> History[(PostgreSQL State History)]
+    Service[Monitored Service]
+    Check[Health Observation]
+    API[FastAPI]
+    Engine[Health State Engine]
+    Rules[Alert Rule Evaluation]
+    Alerts[Alert Lifecycle]
+    Incidents[Incident Lifecycle]
+    DB[(PostgreSQL)]
+    UI[React Operations Dashboard]
+
+    Service --> Check
+    Check --> API
+    API --> Engine
+    Engine --> Rules
+    Rules --> Alerts
+    Alerts --> Incidents
+
+    Engine --> DB
+    Alerts --> DB
+    Incidents --> DB
+
+    DB --> API
+    API --> UI
 ```
 
-Every service begins with a persisted `UNKNOWN` interval. A first success transitions to `HEALTHY`; failed checks keep it `UNKNOWN` until three consecutive failures establish `DOWN`. The active interval is the sole row with `ended_at IS NULL`, protected by a PostgreSQL partial unique index.
+The FastAPI application is the system boundary for health observations and operational reads. PostgreSQL preserves the check history, health intervals, alert state, incidents, and ordered incident events. The React dashboard is a read-oriented client of that API.
 
-## State machine and anti-flapping
+## Operational flow: Payments API
 
-| Current | Transition rule |
-|---|---|
-| HEALTHY → DEGRADED | two consecutive successful checks at ≥500 ms, or two failures in the latest three checks |
-| DEGRADED → DOWN | three consecutive failures |
-| DEGRADED → HEALTHY | three consecutive successes, all <500 ms |
-| DOWN → RECOVERING | first successful check |
-| RECOVERING → HEALTHY | three consecutive successes, all <500 ms |
-| RECOVERING → DOWN | any failure |
+The included Payments API scenario demonstrates the complete outage and recovery path:
 
-This recent-window/consecutive-check logic prevents a single bad check from trivially flapping the state. Checks are stored in UTC; test scenarios use fixed timestamps. State intervals are added only when the state changes.
+```text
+HEALTHY → DEGRADED → DOWN → RECOVERING → HEALTHY
+```
 
-## API
+- `DEGRADED` can activate a WARNING alert.
+- `DOWN` activates a CRITICAL alert and opens an incident.
+- `DOWN → RECOVERING` clears the DOWN alert but keeps the incident open.
+- `RECOVERING → HEALTHY` resolves the incident.
+- `RECOVERING → DOWN` keeps the same incident open rather than creating another outage record.
 
-- `GET /health` — process liveness, independent of PostgreSQL
-- `GET /ready` — PostgreSQL connectivity
-- `POST`, `GET /api/v1/services`
-- `GET /api/v1/services/{id-or-slug}`
-- `POST`, `GET /api/v1/services/{id}/checks`
-- `GET /api/v1/services/{id}/health`
-- `GET /api/v1/services/{id}/health-history`
+This avoids treating a failed recovery as a second outage when it is part of the same operational event.
 
-`(service_id, external_id)` is the idempotency boundary. Repeated submissions return the already-persisted check with `duplicate: true`; this is deterministic request deduplication, not a claim of distributed exactly-once delivery.
+## Stack
 
-## Run and verify
+- Backend: Python 3.11, FastAPI, SQLAlchemy async, Alembic, Pydantic
+- Data: PostgreSQL with asyncpg
+- Frontend: React, TypeScript, Vite
+- Tooling: Docker Compose, pytest, Vitest, GitHub Codespaces
+
+## Run locally
 
 ```bash
 cp .env.example .env
 docker compose up --build
+```
+
+Open the dashboard at `http://localhost:5173`. The API is available at `http://localhost:8000`; `/health` is liveness and `/ready` verifies database connectivity.
+
+To populate the deterministic demo scenario in a running stack:
+
+```bash
 docker compose exec api python /app/scripts/seed_demo.py
 python simulator/payments_scenario.py
 ```
 
-For a clean end-to-end Codespaces-compatible check, run:
+## Verification
+
+The repository includes end-to-end backend, alert/incident, and dashboard verifiers. The most complete dashboard verification is:
 
 ```bash
-bash scripts/verify_codespaces.sh
+bash scripts/verify_frontend.sh
 ```
 
-The script brings up PostgreSQL and the API, confirms Alembic is at head, seeds services, executes the real Payments API scenario, tests duplicate handling, runs PostgreSQL-backed tests, and removes containers only after success. On failure it leaves containers running for diagnosis.
+It installs and tests the frontend, builds the complete Compose stack, validates API/dashboard integration and CORS, seeds the demo data, and runs the Payments scenario. See the [documentation index](docs/README.md) for architecture details and engineering evidence.
 
-Phase 2 is verified separately with `bash scripts/verify_phase2.sh`. The dashboard is verified with `bash scripts/verify_frontend.sh`. See [Phase 2 audit](docs/PHASE2_AUDIT.md), [Phase 2 verification](docs/PHASE2_VERIFICATION.md), [Phase 3 audit](docs/PHASE3_AUDIT.md), and [Phase 3 verification](docs/PHASE3_VERIFICATION.md).
+## Project boundaries
 
-The included devcontainer runs the Compose stack, forwards ports 8000 and 5173, and enables Docker-in-Docker for Codespaces.
+SentinelOps intentionally does not include active probe scheduling, authentication, notification delivery, acknowledgement or ownership workflows, escalation, silencing, maintenance windows, distributed workers, or cloud deployment automation.
 
-## Limitations
+## Historical engineering evidence
 
-Checks must still be submitted in observed order. SentinelOps has no scheduler or active HTTP checker, authentication, notification delivery, acknowledgement, ownership, escalation, silencing, maintenance windows, or cloud deployment.
+The implementation chronology is retained as audit and verification evidence in [docs](docs/README.md), including the original baseline, alert/incident, and dashboard records. These documents describe how the system was verified; they are not the public product narrative.
