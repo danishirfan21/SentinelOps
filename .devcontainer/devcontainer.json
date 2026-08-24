@@ -3,6 +3,7 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "api",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "overrideCommand": false,
   "runServices": ["postgres", "api"],
   "forwardPorts": [8000, 5432],
   "features": {
