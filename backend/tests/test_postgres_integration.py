@@ -11,9 +11,15 @@ from app.main import app
 
 @pytest.fixture(autouse=True)
 async def clean_database():
-    async with engine.begin() as connection:
-        await connection.execute(text("TRUNCATE service_health_states, service_checks, monitored_services CASCADE"))
-    yield
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(text("TRUNCATE service_health_states, service_checks, monitored_services CASCADE"))
+        yield
+    finally:
+        # Tests use function-scoped event loops. Dispose pooled asyncpg
+        # connections before that loop closes so they cannot be reused or
+        # finalized by a subsequent test's loop.
+        await engine.dispose()
 
 
 @pytest.fixture
