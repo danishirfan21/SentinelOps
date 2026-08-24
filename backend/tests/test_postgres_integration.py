@@ -106,3 +106,16 @@ async def test_alert_and_incident_recovery_lifecycle(client):
     assert incident["status"] == "RESOLVED"
     events = (await client.get(f"/api/v1/incidents/{incident['id']}/events")).json()
     assert [event["event_type"] for event in events] == ["OPENED", "RECOVERY_STARTED", "RESOLVED"]
+
+
+async def test_failed_recovery_keeps_one_incident(client):
+    service_id = await create_payments(client)
+    assert (await client.post(f"/api/v1/services/{service_id}/alert-rules", json={"name": "down", "slug": "down", "condition_type": "STATE_DOWN", "severity": "CRITICAL"})).status_code == 201
+    number = 0
+    for success in [False, False, False, True, False, True, True, True]:
+        number += 1
+        await send_check(client, service_id, number, success, 100)
+    incidents = (await client.get("/api/v1/incidents", params={"service_id": str(service_id)})).json()
+    assert len(incidents) == 1 and incidents[0]["status"] == "RESOLVED"
+    events = (await client.get(f"/api/v1/incidents/{incidents[0]['id']}/events")).json()
+    assert [event["event_type"] for event in events] == ["OPENED", "RECOVERY_STARTED", "STATE_CHANGED", "RECOVERY_STARTED", "RESOLVED"]
