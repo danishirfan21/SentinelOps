@@ -5,10 +5,11 @@
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "overrideCommand": false,
   "runServices": ["workspace"],
-  "forwardPorts": [8000, 5432],
+  "forwardPorts": [8000, 5173],
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {"moby": false},
-    "ghcr.io/devcontainers/features/sshd:1": {"version": "latest"}
+    "ghcr.io/devcontainers/features/sshd:1": {"version": "latest"},
+    "ghcr.io/devcontainers/features/node:1": {"version": "20"}
   },
   "customizations": {"vscode": {"extensions": ["ms-python.python", "ms-python.vscode-pylance"]}}
 }
