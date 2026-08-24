@@ -11,7 +11,9 @@ npm run build
 popd >/dev/null
 
 docker compose down -v --remove-orphans
-docker compose build frontend
+# Build all services so the API image reflects the current backend source before
+# exercising the browser-to-API CORS contract.
+docker compose build
 docker compose up -d
 for _ in {1..40}; do docker compose exec -T postgres pg_isready -U sentinelops -d sentinelops && break; sleep 2; done
 for _ in {1..40}; do curl -fsS http://localhost:8000/ready >/dev/null && break; sleep 2; done
