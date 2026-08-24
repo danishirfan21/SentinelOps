@@ -23,7 +23,7 @@ python simulator/payments_scenario.py
 curl -fsS http://localhost:8000/api/v1/services | python -c 'import json,sys; assert json.load(sys.stdin)'
 curl -fsS http://localhost:8000/api/v1/alerts | python -c 'import json,sys; assert json.load(sys.stdin)'
 curl -fsS http://localhost:8000/api/v1/incidents | python -c 'import json,sys; assert json.load(sys.stdin)'
-test "$(curl -fsSI -X OPTIONS -H 'Origin: http://localhost:5173' -H 'Access-Control-Request-Method: GET' http://localhost:8000/api/v1/services | tr -d '\r' | grep -i '^access-control-allow-origin:' | awk '{print $2}')" = "http://localhost:5173"
+test "$(curl -fsS -X OPTIONS -D - -o /dev/null -H 'Origin: http://localhost:5173' -H 'Access-Control-Request-Method: GET' http://localhost:8000/api/v1/services | tr -d '\r' | grep -i '^access-control-allow-origin:' | awk '{print $2}')" = "http://localhost:5173"
 docker compose down -v --remove-orphans
 trap - ERR
 cat <<'MARKER'
