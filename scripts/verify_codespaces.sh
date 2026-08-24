@@ -12,7 +12,9 @@ docker compose up -d
 for _ in {1..40}; do docker compose exec -T postgres pg_isready -U sentinelops -d sentinelops && break; sleep 2; done
 for _ in {1..40}; do curl -fsS http://localhost:8000/ready >/dev/null && break; sleep 2; done
 curl -fsS http://localhost:8000/ready >/dev/null
-test "$(docker compose exec -T api alembic current | tail -1 | awk '{print $1}')" = "0001_phase1"
+# Phase 2 is already part of the committed baseline, so require the current
+# head revision rather than the superseded Phase 1-only revision.
+test "$(docker compose exec -T api alembic current | tail -1 | awk '{print $1}')" = "0002_phase2"
 
 docker compose exec -T api python /app/scripts/seed_demo.py
 python simulator/payments_scenario.py
